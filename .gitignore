@@ -1,0 +1,23 @@
+# Android / Gradle
+.gradle/
+**/build/
+android/local.properties
+android/.gradle/
+
+# Firebase project-specific config (use google-services.json.example as template)
+android/app/google-services.json
+
+# Signing credentials — never commit these
+*.jks
+*.keystore
+android/app/release.keystore
+
+# Build artifacts and backups
+*.apk
+*.aab
+*.hprof
+*.log
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
