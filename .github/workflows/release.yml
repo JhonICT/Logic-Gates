@@ -1,0 +1,131 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish signed Android APK and web app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+
+      - name: Validate semantic version tag
+        id: version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: python3 scripts/calculate_version.py "$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Require Android release signing credentials
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing signing secret::$name must be configured before creating a release tag."
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_FILE"
+          test -s "$ANDROID_KEYSTORE_FILE"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK Platform 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Prepare Firebase build config
+        shell: bash
+        env:
+          FIREBASE_GOOGLE_SERVICES_JSON: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$FIREBASE_GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$FIREBASE_GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          else
+            cp android/app/google-services.json.example android/app/google-services.json
+          fi
+          python3 -m json.tool android/app/google-services.json >/dev/null
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.13'
+
+      - name: Build signed release APK
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          RELEASE_VERSION_NAME: ${{ steps.version.outputs.name }}
+          RELEASE_VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          gradle -p android --no-daemon clean assembleRelease \
+            "-PversionName=$RELEASE_VERSION_NAME" \
+            "-PversionCode=$RELEASE_VERSION_CODE"
+
+      - name: Stage versioned web release file
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          mkdir -p release-artifacts
+          cp index.html "release-artifacts/74LS-Logic-Lab-web-v${RELEASE_VERSION}.html"
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            "release-artifacts/74LS-Logic-Lab-android-v${RELEASE_VERSION}.apk"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "release-artifacts/74LS-Logic-Lab-android-v${RELEASE_VERSION}.apk" \
+            "release-artifacts/74LS-Logic-Lab-web-v${RELEASE_VERSION}.html" \
+            --title "74LS Logic Lab ${RELEASE_VERSION}" \
+            --generate-notes
+
+  notify-players:
+    name: Optional Firebase update announcement
+    runs-on: ubuntu-latest
+    needs: release
+    if: ${{ vars.SEND_FCM_ON_RELEASE == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install Firebase messaging dependencies
+        run: python -m pip install -r scripts/requirements-fcm.txt
+
+      - name: Send release announcement to app_updates topic
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+        run: python scripts/send_fcm_update.py
