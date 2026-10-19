@@ -12,6 +12,10 @@ def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias
     value != null && !value.trim().isEmpty()
 }
 
+// Release workflow passes -PversionName / -PversionCode; local builds fall back to these defaults.
+def appVersionCode = (project.findProperty('versionCode') ?: '1').toString().toInteger()
+def appVersionName = (project.findProperty('versionName') ?: '1.1.0').toString()
+
 android {
     namespace 'com.seventyfourls.logiclab'
     compileSdk 36
@@ -20,8 +24,8 @@ android {
         applicationId 'com.seventyfourls.logiclab'
         minSdk 24
         targetSdk 35
-        versionCode (project.findProperty('versionCode') ?: '1').toString().toInteger()
-        versionName (project.findProperty('versionName') ?: '1.1.0').toString()
+        versionCode = appVersionCode
+        versionName = appVersionName
     }
 
     compileOptions {
