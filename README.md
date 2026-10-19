@@ -21,6 +21,12 @@
 
 Public visibility means the source is visible to everyone. It does not automatically grant others a license to reuse it. Choose and add a `LICENSE` file before inviting redistribution or third-party contributions.
 
+## Getting the APK onto a phone
+
+- **For friends and players:** open the repository's **Releases** page, choose the latest release and download `74LS-Logic-Lab-android-vX.Y.Z.apk`. Because the repository is public, no GitHub account is needed. On first install Android will ask to allow "Install unknown apps" for the browser or file manager, and Google Play Protect may show a warning for apps that did not come from the Play Store.
+- **Test builds:** Actions → latest green `CI` run → Artifacts → `74ls-logic-lab-debug-apk`. This is a zip containing `app-debug.apk` and expires after 14 days. Downloading workflow artifacts always requires a signed-in GitHub account, even on a public repository, so share the release APK rather than this one.
+- A release exists only after the signing secrets below are added and a version tag is pushed. Step-by-step commands for creating the key and adding the secrets are in `docs/FIRST_PUSH.md`.
+
 ## Android project setup
 
 Open the `android/` directory in Android Studio. Install Android SDK Platform 36 and use JDK 17. The project currently uses Android Gradle Plugin 8.13.2 and Gradle 8.13.
