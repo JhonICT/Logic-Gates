@@ -57,6 +57,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Google no longer serves the legacy 'tools' package, which this action installs
+          # by default and which makes sdkmanager fail. Only platform-tools is needed here.
+          packages: platform-tools
 
       - name: Install Android SDK Platform 36
         run: |
